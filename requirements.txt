@@ -1,0 +1,11 @@
+streamlit==1.42.1
+fastapi==0.104.1
+pandas==2.2.3
+numpy==2.2.2
+uvicorn==0.24.0
+gunicorn==21.2.0
+python-multipart==0.0.6
+scikit-learn==1.6.1
+plotly==6.0.0
+python-dateutil==2.9.0.post0
+pytz==2024.1
