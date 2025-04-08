@@ -1,16 +1,21 @@
 test = "test"
 
-def test_cleaner():
-    assert test == "test"
+
 
 
 if __name__ == "__main__":
-    test_cleaner()
+    setup_test()
 
 # set up the test
 def setup_test():
     assert test == "test"
 
 
+def test_remove_duplicates():
+    assert test == "test"
+
+
+def test_remove_duplicates():
+    assert test == "test"
 
 
