@@ -128,10 +128,14 @@ class DataProcessor:
             # Save current state for comparison
             previous_df = self.janitor.df.copy()
             
+            # Initialize assumptions list to record any assumptions made
+            assumptions = []
+            
             # Apply the step
             if step_type == "normalize":
                 self.janitor.normalize_column_names()
                 message = "Normalized column names"
+                assumptions.append("Column names with spaces, special characters, or inconsistent casing need standardization")
                 # Generate list of changes
                 old_columns = list(previous_df.columns)
                 new_columns = list(self.janitor.df.columns)
@@ -146,6 +150,7 @@ class DataProcessor:
             elif step_type == "fix_types":
                 self.janitor.fix_data_types()
                 message = "Fixed data types"
+                assumptions.append("Columns may have incorrect data types based on their content")
                 # Compare data types before and after
                 old_dtypes = previous_df.dtypes
                 new_dtypes = self.janitor.df.dtypes
@@ -153,6 +158,7 @@ class DataProcessor:
                 for col in previous_df.columns:
                     if old_dtypes[col] != new_dtypes[col]:
                         changes.append(f"'{col}': {old_dtypes[col]} → {new_dtypes[col]}")
+                        assumptions.append(f"Column '{col}' contains {new_dtypes[col]} data despite being stored as {old_dtypes[col]}")
                 
                 if changes:
                     message += "\n• Changes:"
@@ -164,6 +170,12 @@ class DataProcessor:
             elif step_type == "remove_duplicates":
                 subset = kwargs.get('columns', None)
                 self.janitor.remove_duplicates(subset)
+                
+                # Record assumptions
+                if subset:
+                    assumptions.append(f"Rows with identical values in columns {subset} are true duplicates and can be removed")
+                else:
+                    assumptions.append("Rows with identical values across all columns are true duplicates and can be removed")
                 
                 # Count duplicates removed
                 rows_before = len(previous_df)
@@ -187,6 +199,24 @@ class DataProcessor:
                 strategy = kwargs.get('strategy', {})
                 self.janitor.handle_missing_values(strategy)
                 
+                # Record assumptions for each strategy
+                for col, strat in strategy.items():
+                    if strat == 'mean':
+                        assumptions.append(f"Missing values in '{col}' can be represented by the mean (data follows normal distribution)")
+                    elif strat == 'median':
+                        assumptions.append(f"Missing values in '{col}' can be represented by the median (handles skewed data better)")
+                    elif strat == 'most_frequent':
+                        assumptions.append(f"Missing values in '{col}' can be represented by the most common value")
+                    elif strat == 'constant':
+                        assumptions.append(f"Missing values in '{col}' can be replaced with a placeholder constant")
+                    elif strat == 'drop':
+                        assumptions.append(f"Rows with missing values in '{col}' can be removed without biasing the dataset")
+                
+                # Default strategy assumption
+                if not strategy:
+                    assumptions.append("Numeric columns with missing values can be represented by their median")
+                    assumptions.append("Non-numeric columns with missing values can be represented by their most frequent value")
+                
                 # Count missing values before and after
                 missing_before = previous_df.isna().sum().sum()
                 missing_after = self.janitor.df.isna().sum().sum()
@@ -208,6 +238,20 @@ class DataProcessor:
                 columns = kwargs.get('columns', None)
                 method = kwargs.get('method', 'iqr')
                 threshold = kwargs.get('threshold', 1.5)
+                
+                # Record assumptions
+                if method == 'iqr':
+                    if columns:
+                        assumptions.append(f"Values beyond {threshold} times the IQR in columns {columns} are outliers and can be removed")
+                    else:
+                        assumptions.append(f"Values beyond {threshold} times the IQR in numeric columns are outliers and can be removed")
+                    assumptions.append(f"The data follows a distribution where IQR-based detection is appropriate")
+                elif method == 'zscore':
+                    if columns:
+                        assumptions.append(f"Values beyond {threshold} standard deviations in columns {columns} are outliers and can be removed")
+                    else:
+                        assumptions.append(f"Values beyond {threshold} standard deviations in numeric columns are outliers and can be removed")
+                    assumptions.append("The data follows a normal distribution")
                 
                 # Count rows before
                 rows_before = len(previous_df)
@@ -237,6 +281,10 @@ class DataProcessor:
                 format_dict = kwargs.get('format_dict', {})
                 self.janitor.standardize_formats(format_dict)
                 
+                # Record assumptions
+                for col, format_type in format_dict.items():
+                    assumptions.append(f"Values in '{col}' can be standardized to a consistent {format_type} format")
+                
                 message = "Standardized formats"
                 if format_dict:
                     message += "\n• Formats applied:"
@@ -254,7 +302,7 @@ class DataProcessor:
             rows_after = len(self.janitor.df)
             cols_after = len(self.janitor.df.columns)
             
-            # Record the step
+            # Record the step with assumptions
             step_info = {
                 "type": step_type,
                 "params": kwargs,
@@ -262,7 +310,8 @@ class DataProcessor:
                 "rows_after": rows_after,
                 "cols_before": cols_before,
                 "cols_after": cols_after,
-                "message": message
+                "message": message,
+                "assumptions": assumptions
             }
             
             self.cleaning_steps.append(step_info)
@@ -283,6 +332,12 @@ class DataProcessor:
                     message += f"\n  • {cols_before - cols_after} columns removed"
             else:
                 message += "\n  • No columns were added or removed"
+            
+            # Add assumptions to message
+            if assumptions:
+                message += "\n\n• Assumptions:"
+                for assumption in assumptions:
+                    message += f"\n  • {assumption}"
             
             return True, message
             
@@ -480,3 +535,107 @@ class DataProcessor:
             List of cleaning steps
         """
         return self.cleaning_steps
+        
+    def generate_cleaning_documentation(self) -> str:
+        """
+        Generate a comprehensive documentation report of all cleaning steps, decisions, and assumptions.
+        
+        Returns:
+            A formatted string containing the cleaning documentation
+        """
+        if not self.cleaning_steps:
+            return "No cleaning steps have been applied."
+            
+        doc_lines = ["# Data Cleaning Documentation", ""]
+        
+        # Overview statistics
+        doc_lines.append("## Overview")
+        if self.original_df is not None and self.cleaned_df is not None:
+            orig_rows, orig_cols = len(self.original_df), len(self.original_df.columns)
+            clean_rows, clean_cols = len(self.cleaned_df), len(self.cleaned_df.columns)
+            
+            doc_lines.append(f"* Original dataset: {orig_rows} rows, {orig_cols} columns")
+            doc_lines.append(f"* Cleaned dataset: {clean_rows} rows, {clean_cols} columns")
+            
+            if orig_rows > clean_rows:
+                doc_lines.append(f"* Rows removed: {orig_rows - clean_rows} ({((orig_rows - clean_rows)/orig_rows)*100:.1f}%)")
+            
+            if orig_cols != clean_cols:
+                if clean_cols > orig_cols:
+                    doc_lines.append(f"* Columns added: {clean_cols - orig_cols}")
+                else:
+                    doc_lines.append(f"* Columns removed: {orig_cols - clean_cols}")
+            
+        doc_lines.append("")
+        
+        # Summary of all steps
+        doc_lines.append("## Cleaning Steps Summary")
+        for i, step in enumerate(self.cleaning_steps, 1):
+            doc_lines.append(f"{i}. {step['type'].replace('_', ' ').title()}")
+        
+        doc_lines.append("")
+        
+        # Detailed breakdown of each step
+        doc_lines.append("## Detailed Cleaning Steps")
+        for i, step in enumerate(self.cleaning_steps, 1):
+            doc_lines.append(f"### Step {i}: {step['type'].replace('_', ' ').title()}")
+            
+            # Parameters used
+            if step['params']:
+                doc_lines.append("**Parameters:**")
+                for param, value in step['params'].items():
+                    doc_lines.append(f"* {param}: {value}")
+            
+            # Extract message content (without the bullet points)
+            message_parts = step['message'].split('\n')
+            main_message = message_parts[0]
+            doc_lines.append(f"**Action:** {main_message}")
+            
+            # Changes made
+            doc_lines.append("**Changes:**")
+            bullet_points = [line for line in message_parts[1:] if line.strip().startswith('•')]
+            if bullet_points:
+                doc_lines.extend(bullet_points)
+            else:
+                doc_lines.append("* No significant changes detected")
+            
+            # Assumptions
+            if 'assumptions' in step and step['assumptions']:
+                doc_lines.append("**Assumptions:**")
+                for assumption in step['assumptions']:
+                    doc_lines.append(f"* {assumption}")
+            
+            # Data impact
+            doc_lines.append("**Data Impact:**")
+            rows_diff = step['rows_before'] - step['rows_after']
+            cols_diff = step['cols_before'] - step['cols_after']
+            
+            if rows_diff > 0:
+                doc_lines.append(f"* Removed {rows_diff} rows ({(rows_diff/step['rows_before'])*100:.1f}% of data)")
+            
+            if cols_diff != 0:
+                if cols_diff > 0:
+                    doc_lines.append(f"* Removed {cols_diff} columns")
+                else:
+                    doc_lines.append(f"* Added {abs(cols_diff)} columns")
+            
+            doc_lines.append("")
+        
+        # Generate recommendations section
+        doc_lines.append("## Recommendations and Notes")
+        doc_lines.append("* This cleaning pipeline should be reviewed and updated as data evolves")
+        doc_lines.append("* Consider additional validation steps for critical data fields")
+        doc_lines.append("* Monitor data quality over time to ensure consistency")
+        
+        # Compile all assumptions in one place
+        all_assumptions = []
+        for step in self.cleaning_steps:
+            if 'assumptions' in step:
+                all_assumptions.extend(step['assumptions'])
+        
+        if all_assumptions:
+            doc_lines.append("\n## All Assumptions")
+            for assumption in set(all_assumptions):  # Use set to remove duplicates
+                doc_lines.append(f"* {assumption}")
+        
+        return "\n".join(doc_lines)

@@ -615,4 +615,37 @@ elif current_tab == "Export":
                         download_link = get_download_link(temp_file_path, "Download Pipeline Script")
                         st.markdown(download_link, unsafe_allow_html=True)
                     else:
-                        st.error(message) 
+                        st.error(message)
+        
+        # Add Documentation Section
+        st.markdown("---")
+        st.subheader("Cleaning Documentation")
+        st.write("Generate detailed documentation of all cleaning steps, decisions, and assumptions.")
+        
+        if not st.session_state.data_processor.cleaning_steps:
+            st.warning("No cleaning steps have been applied yet.")
+        else:
+            # Generate documentation
+            documentation = st.session_state.data_processor.generate_cleaning_documentation()
+            
+            # Display documentation
+            with st.expander("View Documentation", expanded=True):
+                st.markdown(documentation)
+            
+            # Export documentation
+            doc_filename = st.text_input("Documentation Filename", "cleaning_documentation.md")
+            
+            if st.button("Export Documentation"):
+                with st.spinner("Exporting documentation..."):
+                    # Save to temp file
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".md")
+                    temp_file_path = temp_file.name
+                    
+                    with open(temp_file_path, 'w') as f:
+                        f.write(documentation)
+                    
+                    st.success(f"Successfully exported documentation to {doc_filename}")
+                    
+                    # Create download link
+                    download_link = get_download_link(temp_file_path, "Download Documentation")
+                    st.markdown(download_link, unsafe_allow_html=True) 
