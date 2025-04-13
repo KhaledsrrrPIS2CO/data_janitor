@@ -194,13 +194,18 @@ def generate_data_type_summary(df: pd.DataFrame) -> str:
     type_counts = dtypes.value_counts().reset_index()
     type_counts.columns = ['Data Type', 'Count']
     
-    # Create a pie chart
+    # Define a color sequence for different data types
+    color_sequence = px.colors.qualitative.Bold
+    
+    # Create a pie chart with distinct colors
     fig = px.pie(
         type_counts, 
         values='Count', 
         names='Data Type',
         title='Data Type Distribution',
-        height=400
+        height=400,
+        color='Data Type',  # Use Data Type column for color mapping
+        color_discrete_sequence=color_sequence  # Use bold color palette
     )
     
     # Convert to base64 image
