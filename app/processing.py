@@ -132,38 +132,118 @@ class DataProcessor:
             if step_type == "normalize":
                 self.janitor.normalize_column_names()
                 message = "Normalized column names"
+                # Generate list of changes
+                old_columns = list(previous_df.columns)
+                new_columns = list(self.janitor.df.columns)
+                if old_columns != new_columns:
+                    message += "\n• Changes:"
+                    for i, (old, new) in enumerate(zip(old_columns, new_columns)):
+                        if old != new:
+                            message += f"\n  • '{old}' → '{new}'"
+                else:
+                    message += "\n• No column names needed normalization"
             
             elif step_type == "fix_types":
                 self.janitor.fix_data_types()
                 message = "Fixed data types"
+                # Compare data types before and after
+                old_dtypes = previous_df.dtypes
+                new_dtypes = self.janitor.df.dtypes
+                changes = []
+                for col in previous_df.columns:
+                    if old_dtypes[col] != new_dtypes[col]:
+                        changes.append(f"'{col}': {old_dtypes[col]} → {new_dtypes[col]}")
+                
+                if changes:
+                    message += "\n• Changes:"
+                    for change in changes:
+                        message += f"\n  • {change}"
+                else:
+                    message += "\n• No data types needed fixing"
             
             elif step_type == "remove_duplicates":
                 subset = kwargs.get('columns', None)
                 self.janitor.remove_duplicates(subset)
+                
+                # Count duplicates removed
+                rows_before = len(previous_df)
+                rows_after = len(self.janitor.df)
+                dups_removed = rows_before - rows_after
+                
                 message = "Removed duplicate rows"
                 if subset:
-                    message += f" based on columns: {', '.join(subset)}"
+                    col_list = ", ".join(subset)
+                    message += f" based on columns: {col_list}"
+                
+                if dups_removed > 0:
+                    message += f"\n• Removed {dups_removed} duplicate rows"
+                    if subset:
+                        message += f" based on {len(subset)} columns"
+                    message += f" ({(dups_removed/rows_before)*100:.1f}% of data)"
+                else:
+                    message += "\n• No duplicates found to remove"
             
             elif step_type == "handle_missing":
                 strategy = kwargs.get('strategy', {})
                 self.janitor.handle_missing_values(strategy)
+                
+                # Count missing values before and after
+                missing_before = previous_df.isna().sum().sum()
+                missing_after = self.janitor.df.isna().sum().sum()
+                
                 message = "Handled missing values"
+                if missing_before > missing_after:
+                    message += f"\n• Filled {missing_before - missing_after} missing values"
+                    # Add details on strategies used
+                    if strategy:
+                        message += "\n• Strategies used:"
+                        for col, strat in strategy.items():
+                            missing_in_col = previous_df[col].isna().sum()
+                            if missing_in_col > 0:
+                                message += f"\n  • '{col}': {strat} ({missing_in_col} values)"
+                else:
+                    message += "\n• No missing values were filled"
             
             elif step_type == "remove_outliers":
                 columns = kwargs.get('columns', None)
                 method = kwargs.get('method', 'iqr')
                 threshold = kwargs.get('threshold', 1.5)
+                
+                # Count rows before
+                rows_before = len(previous_df)
+                
                 self.janitor.remove_outliers(columns, method, threshold)
+                
+                # Count rows after
+                rows_after = len(self.janitor.df)
+                outliers_removed = rows_before - rows_after
+                
                 message = f"Removed outliers using {method} method"
                 if columns:
-                    message += f" for columns: {', '.join(columns)}"
+                    col_list = ", ".join(columns)
+                    message += f" for columns: {col_list}"
+                
+                if outliers_removed > 0:
+                    message += f"\n• Removed {outliers_removed} outliers"
+                    message += f" ({(outliers_removed/rows_before)*100:.1f}% of data)"
+                    message += f"\n• Method: {method.upper()}"
+                    message += f"\n• Threshold: {threshold}"
+                    if columns:
+                        message += f"\n• Applied to {len(columns)} columns"
+                else:
+                    message += f"\n• No outliers found using {method.upper()} method with threshold {threshold}"
             
             elif step_type == "standardize_formats":
                 format_dict = kwargs.get('format_dict', {})
                 self.janitor.standardize_formats(format_dict)
+                
                 message = "Standardized formats"
                 if format_dict:
-                    message += f" for columns: {', '.join(format_dict.keys())}"
+                    message += "\n• Formats applied:"
+                    for col, format_type in format_dict.items():
+                        message += f"\n  • '{col}': {format_type}"
+                else:
+                    message += "\n• No format standardization applied"
             
             else:
                 return False, f"Unknown cleaning step: {step_type}"
@@ -188,14 +268,21 @@ class DataProcessor:
             self.cleaning_steps.append(step_info)
             self.cleaned_df = self.janitor.df.copy()
             
-            # Add change info to message
+            # Add overall change info to message
+            message += "\n\n• Summary:"
             if rows_before != rows_after:
-                message += f" ({rows_before - rows_after} rows removed)"
+                row_diff = rows_before - rows_after
+                message += f"\n  • {row_diff} rows removed ({(row_diff/rows_before)*100:.1f}% reduction)"
+            else:
+                message += "\n  • No rows were removed"
+                
             if cols_before != cols_after:
                 if cols_after > cols_before:
-                    message += f" ({cols_after - cols_before} columns added)"
+                    message += f"\n  • {cols_after - cols_before} columns added"
                 else:
-                    message += f" ({cols_before - cols_after} columns removed)"
+                    message += f"\n  • {cols_before - cols_after} columns removed"
+            else:
+                message += "\n  • No columns were added or removed"
             
             return True, message
             
