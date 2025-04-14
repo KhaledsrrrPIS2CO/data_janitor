@@ -162,10 +162,10 @@ def render_upload_tab():
     with col2:
         st.markdown("### Sample Data")
         st.markdown("""
-        Don't have a dataset? Try one of these samples:
-        - [Titanic Dataset](https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv)
-        - [Iris Dataset](https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv)
-        - [Housing Dataset](https://raw.githubusercontent.com/ageron/handson-ml/master/datasets/housing/housing.csv)
+        Don't have a dataset? Get one from:
+        - [Kaggle Datasets](https://www.kaggle.com/datasets)
+        - [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets.php)
+        - [OpenML](https://www.openml.org/search?type=data&sort=runs&page=1)
         """)
 
 
